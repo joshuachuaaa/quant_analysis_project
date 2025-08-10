@@ -1,0 +1,26 @@
+{
+  "scaling_factor": 98.6478962952764,
+  "index_start": "2025-03-03 00:00:00+00:00",
+  "index_end": "2025-07-01 00:00:00+00:00",
+  "rows": 34561,
+  "freq": "5min",
+  "columns": [
+    "open_d1_scaled",
+    "high_d1_scaled",
+    "low_d1_scaled",
+    "close_d1_scaled",
+    "volume_d1_scaled",
+    "open_d2",
+    "high_d2",
+    "low_d2",
+    "close_d2",
+    "volume_d2",
+    "spread",
+    "returns_d1",
+    "returns_d2",
+    "logret_d1",
+    "logret_d2",
+    "rolling_corr",
+    "rolling_corr_log"
+  ]
+}
