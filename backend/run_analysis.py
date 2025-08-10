@@ -3,6 +3,8 @@ import os
 import json
 import re
 import math
+import shutil
+from pathlib import Path
 from typing import Dict, Optional, Tuple, List
 
 import numpy as np
@@ -89,6 +91,127 @@ def compute_trade_active(df: pd.DataFrame) -> pd.Series:
     return ((vol > 0) & px.notna()).astype("bool")
 
 # ===========================
+# File org & reporting helpers
+# ===========================
+
+def _mkdirs(base: str) -> Dict[str, Path]:
+    """
+    Create a clean folder layout inside OUT_DIR and return a dict of subpaths.
+    """
+    base_p = Path(base)
+    sub = {
+        "tables": base_p / "tables",
+        "heatmaps_global": base_p / "heatmaps" / "global",
+        "heatmaps_contract": base_p / "heatmaps" / "per_contract",
+        "heatmaps_overlap": base_p / "heatmaps" / "overlap",
+        "diagnostics": base_p / "diagnostics",
+        "panels": base_p / "panels",
+        "report": base_p / "report",
+    }
+    for p in sub.values():
+        p.mkdir(parents=True, exist_ok=True)
+    return sub
+
+def _write_excel_workbook(xlsx_path: str, csv_paths: Dict[str, str]) -> str:
+    """
+    Combine many CSVs into one Excel workbook with one sheet per table.
+    Missing files are skipped silently.
+    """
+    with pd.ExcelWriter(xlsx_path, engine="xlsxwriter") as xl:
+        for sheet, csv_path in csv_paths.items():
+            if not csv_path:
+                continue
+            p = Path(csv_path)
+            if p.exists() and p.suffix.lower() == ".csv":
+                try:
+                    df = pd.read_csv(p)
+                    xl_sheet = sheet[:31].replace(":", "_").replace("/", "_")
+                    df.to_excel(xl, index=False, sheet_name=xl_sheet)
+                except Exception as e:
+                    print(f"⚠️  Skipped {csv_path}: {e}")
+    return xlsx_path
+
+def _build_index_html(out_dir: str, meta: dict) -> str:
+    """
+    Build a lightweight HTML index with links to tables and embedded thumbnails.
+    """
+    base = Path(out_dir)
+    report = base / "report" / "index.html"
+
+    imgs = []
+    def _img(path):
+        if not path:
+            return ""
+        try:
+            rel = Path(path).relative_to(base)
+        except Exception:
+            rel = Path(path)
+        return f"<div><img src='../{rel}' width='520'><br><code>{Path(path).name}</code></div>"
+
+    hm1 = meta["outputs"].get("heatmap_dataset1")
+    hm2 = meta["outputs"].get("heatmap_dataset2")
+    if hm1: imgs.append(_img(hm1))
+    if hm2: imgs.append(_img(hm2))
+    for p in (meta["outputs"].get("rolling_ratio_plots") or [])[:4]:
+        imgs.append(_img(p))
+    for p in (meta["outputs"].get("overlap_heatmaps") or [])[:6]:
+        imgs.append(_img(p))
+
+    table_keys = [
+        "metrics_summary","per_contract_scaling","contract_windows",
+        "uptime_overall","uptime_per_contract","lead_lag","error_by_hour",
+        "roll_dates","merged_snapshot"
+    ]
+    table_links = []
+    for k in table_keys:
+        path = meta["outputs"].get(k)
+        if not path:
+            continue
+        try:
+            rel = Path(path).relative_to(base)
+        except Exception:
+            rel = Path(path)
+        table_links.append(f"<li><a href='../{rel}'>{k}</a></li>")
+
+    html = f"""<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<title>Artifacts Index</title>
+<style>
+body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }}
+h1,h2 {{ margin: 8px 0 12px; }}
+.grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(540px, 1fr)); gap: 16px; }}
+code {{ background:#f4f4f4; padding:2px 4px; border-radius:4px; }}
+</style>
+</head><body>
+<h1>Artifacts Index</h1>
+<p><strong>Rows</strong> — dataset1: {meta['n_rows']['dataset1']}, dataset2: {meta['n_rows']['dataset2']}<br>
+<strong>Time span</strong> — d1: {meta['time_span']['dataset1']}, d2: {meta['time_span']['dataset2']}</p>
+
+<h2>Tables</h2>
+<ul>
+{''.join(table_links)}
+<li><a href="../tables/report.xlsx">report.xlsx</a> (all key tables in one workbook)</li>
+</ul>
+
+<h2>Key Plots</h2>
+<div class="grid">
+{''.join(imgs)}
+</div>
+
+</body></html>"""
+    report.write_text(html, encoding="utf-8")
+    return str(report)
+
+def _zip_artifacts(out_dir: str, zip_name: str = "artifacts_bundle.zip") -> str:
+    base = Path(out_dir)
+    zip_path = base / zip_name
+    if zip_path.exists():
+        zip_path.unlink()
+    shutil.make_archive(str(zip_path.with_suffix("")), "zip", root_dir=base)
+    return str(zip_path)
+
+# ===========================
 # Load & clean
 # ===========================
 
@@ -110,7 +233,9 @@ def clean_inputs(df1: pd.DataFrame, df2: pd.DataFrame) -> Tuple[pd.DataFrame, pd
     d1 = d1.dropna(subset=["date_time"])
     d2 = d2.dropna(subset=["date_time"])
 
-    if "gmt_offset" in d2.columns:
+    # Optional toggle to A/B test whether dataset2 needs gmt_offset applied
+    apply_d2_offset = os.environ.get("D2_APPLY_GMT_OFFSET", "1") not in {"0", "false", "False"}
+    if "gmt_offset" in d2.columns and apply_d2_offset:
         gmt = pd.to_numeric(d2["gmt_offset"], errors="coerce").fillna(0)
         d2["date_time"] = d2["date_time"] - pd.to_timedelta(gmt, unit="h")
 
@@ -133,6 +258,7 @@ def clean_inputs(df1: pd.DataFrame, df2: pd.DataFrame) -> Tuple[pd.DataFrame, pd
         bad = d1["iscomplete"] == False
         d1.loc[bad, ohlc] = np.nan
 
+    # find alias column in dataset2
     alias_col = None
     for c in d2.columns:
         if c.lower().strip() in {"alias_underlying_ric", "alias_ric", "alias"}:
@@ -141,6 +267,7 @@ def clean_inputs(df1: pd.DataFrame, df2: pd.DataFrame) -> Tuple[pd.DataFrame, pd
     if alias_col is None:
         raise ValueError("Dataset 2 must contain alias_underlying_ric (or alias_ric/alias).")
 
+    # normalize contract codes
     ts_year_hint_d1 = int(np.median(d1.index.year)) if len(d1) else 2025
     ts_year_hint_d2 = int(np.median(d2.index.year)) if len(d2) else 2025
     d1["contract_raw"]  = _extract_df1_contract(d1.get("key", "").fillna(""))
@@ -635,7 +762,6 @@ def plot_rolling_ratio(rr_df: pd.DataFrame, out_dir: str, limit: Optional[int] =
     if rr_df.empty:
         return []
     paths=[]
-    # choose contracts by number of points
     counts = rr_df["contract"].value_counts().sort_values(ascending=False)
     if limit is not None:
         counts = counts.head(limit)
@@ -662,6 +788,13 @@ def run_pipeline(
     freq="5min",
 ):
     os.makedirs(out_dir, exist_ok=True)
+    SUB = _mkdirs(out_dir)
+
+    # LITE flags (skip heavy generations if desired)
+    LITE = os.environ.get("LITE", "0") in {"1","true","True"}
+    GEN_HEATMAPS = os.environ.get("GEN_HEATMAPS", "1") in {"1","true","True"} and not LITE
+    GEN_PANELS   = os.environ.get("GEN_PANELS", "1") in {"1","true","True"} and not LITE
+    GEN_DIAGS    = os.environ.get("GEN_DIAGS", "1") in {"1","true","True"} and not LITE
 
     # 1) Load & clean
     df1_raw, df2_raw = load_data(path1, path2)
@@ -669,25 +802,25 @@ def run_pipeline(
 
     # 2) Contract windows (intersection of first/last TRADE-ACTIVE)
     windows = per_contract_windows(d1, d2)
-    windows_path = f"{out_dir}/contract_windows.csv"; windows.to_csv(windows_path, index=False)
+    windows_path = str(SUB["tables"] / "contract_windows.csv"); windows.to_csv(windows_path, index=False)
 
     # 3) Per-contract scaling on matched+active bars
     factors = per_contract_scaling(d1, d2, windows)
     scaling_tbl = pd.DataFrame([{"contract":k, "scale_factor":v} for k,v in factors.items()]).sort_values("contract")
-    scaling_path = f"{out_dir}/per_contract_scaling.csv"; scaling_tbl.to_csv(scaling_path, index=False)
+    scaling_path = str(SUB["tables"] / "per_contract_scaling.csv"); scaling_tbl.to_csv(scaling_path, index=False)
 
     # 4) Apply scaling to df1
     d1s = apply_per_contract_scaling(d1, factors)
 
     # 5) Metrics on matched windows
     summary, detailed = compute_metrics(d1s, d2, windows)
-    summary_path = f"{out_dir}/metrics_summary.csv"; summary.to_csv(summary_path, index=False)
-    detailed_path = f"{out_dir}/matched_detail.csv"; detailed.to_csv(detailed_path, index=False)
+    summary_path = str(SUB["tables"] / "metrics_summary.csv"); summary.to_csv(summary_path, index=False)
+    detailed_path = str(SUB["tables"] / "matched_detail.csv"); detailed.to_csv(detailed_path, index=False)
 
     # 6) Roll diagnostics
     roll1 = compute_roll_dates(d1, "dataset1"); roll2 = compute_roll_dates(d2, "dataset2")
     rolls = pd.concat([roll1, roll2], ignore_index=True)
-    rolls_path = f"{out_dir}/roll_dates.csv"; rolls.to_csv(rolls_path, index=False)
+    rolls_path = str(SUB["tables"] / "roll_dates.csv"); rolls.to_csv(rolls_path, index=False)
 
     # 7) Merged snapshot (compact intersection only; for quick inspection)
     idx = d1s.index.intersection(d2.index)
@@ -700,35 +833,65 @@ def run_pipeline(
     merged["spread"] = merged["close_d1_scaled"] - merged["close_d2"]
     merged["vol_d1"] = d1s.reindex(idx)["volume"]
     merged["vol_d2"] = d2.reindex(idx)["volume"]
-    merged_path = f"{out_dir}/merged_snapshot.csv"; merged.to_csv(merged_path)
+    merged_path = str(SUB["tables"] / "merged_snapshot.csv"); merged.to_csv(merged_path)
 
     # 8) Heatmaps
-    hm1 = plot_missing_heatmap(d1, "dataset1_futures", out_dir=out_dir, freq=freq, tz="UTC")
-    hm2 = plot_missing_heatmap(d2, "dataset2_futures", out_dir=out_dir, freq=freq, tz="UTC")
-    per_contract_hm1 = generate_per_contract_heatmaps(d1, "dataset1_futures", out_dir=out_dir, tz="UTC", limit=8)
-    per_contract_hm2 = generate_per_contract_heatmaps(d2, "dataset2_futures", out_dir=out_dir, tz="UTC", limit=8)
-    overlap_hms = plot_overlap_heatmaps(d1, d2, windows, out_dir=out_dir, tz="UTC", limit=8)
+    if GEN_HEATMAPS:
+        hm1 = plot_missing_heatmap(d1, "dataset1_futures", out_dir=str(SUB["heatmaps_global"]), freq=freq, tz="UTC")
+        hm2 = plot_missing_heatmap(d2, "dataset2_futures", out_dir=str(SUB["heatmaps_global"]), freq=freq, tz="UTC")
+        per_contract_hm1 = generate_per_contract_heatmaps(d1, "dataset1_futures", out_dir=str(SUB["heatmaps_contract"]), tz="UTC", limit=8)
+        per_contract_hm2 = generate_per_contract_heatmaps(d2, "dataset2_futures", out_dir=str(SUB["heatmaps_contract"]), tz="UTC", limit=8)
+        overlap_hms = plot_overlap_heatmaps(d1, d2, windows, out_dir=str(SUB["heatmaps_overlap"]), tz="UTC", limit=8)
+    else:
+        hm1 = hm2 = None
+        per_contract_hm1 = per_contract_hm2 = []
+        overlap_hms = []
 
     # 9) Uptime
     up1 = uptime_overall(d1, freq=freq); up2 = uptime_overall(d2, freq=freq)
     up_overall = pd.DataFrame([dict(dataset="dataset1", **up1), dict(dataset="dataset2", **up2)])
-    up_overall_path = f"{out_dir}/uptime_overall.csv"; up_overall.to_csv(up_overall_path, index=False)
+    up_overall_path = str(SUB["tables"] / "uptime_overall.csv"); up_overall.to_csv(up_overall_path, index=False)
     up_contract = uptime_per_contract(d1, d2, windows, freq=freq)
-    up_contract_path = f"{out_dir}/uptime_per_contract.csv"; up_contract.to_csv(up_contract_path, index=False)
+    up_contract_path = str(SUB["tables"] / "uptime_per_contract.csv"); up_contract.to_csv(up_contract_path, index=False)
 
     # 10) Contract-centric union panels (preserve one-sided bars)
-    panel_paths = export_contract_panels(d1, d2, factors, out_dir=out_dir, freq=freq, limit=8)
+    panel_paths = export_contract_panels(d1, d2, factors, out_dir=str(SUB["panels"]), freq=freq, limit=8) if GEN_PANELS else []
 
     # 11) Extra diagnostics
-    ll = lead_lag_diag(d1s, d2, windows, max_lag=2)
-    ll_path = f"{out_dir}/lead_lag.csv"; ll.to_csv(ll_path, index=False)
-    e_hour = error_by_hour(d1s, d2, windows)
-    e_hour_path = f"{out_dir}/error_by_hour.csv"; e_hour.to_csv(e_hour_path, index=False)
-    rr = rolling_ratio(d1s, d2, windows, win=24)
-    rr_path = f"{out_dir}/rolling_ratio.csv"; rr.to_csv(rr_path, index=False)
-    rr_plots = plot_rolling_ratio(rr, out_dir=out_dir, limit=6)
+    if GEN_DIAGS:
+        ll = lead_lag_diag(d1s, d2, windows, max_lag=2)
+        ll_path = str(SUB["tables"] / "lead_lag.csv"); ll.to_csv(ll_path, index=False)
+        e_hour = error_by_hour(d1s, d2, windows)
+        e_hour_path = str(SUB["tables"] / "error_by_hour.csv"); e_hour.to_csv(e_hour_path, index=False)
+        rr = rolling_ratio(d1s, d2, windows, win=24)
+        rr_path = str(SUB["tables"] / "rolling_ratio.csv"); rr.to_csv(rr_path, index=False)
+        rr_plots = plot_rolling_ratio(rr, out_dir=str(SUB["diagnostics"]), limit=6)
+    else:
+        ll_path = str(SUB["tables"] / "lead_lag.csv"); pd.DataFrame().to_csv(ll_path, index=False)
+        e_hour_path = str(SUB["tables"] / "error_by_hour.csv"); pd.DataFrame().to_csv(e_hour_path, index=False)
+        rr_path = str(SUB["tables"] / "rolling_ratio.csv"); pd.DataFrame().to_csv(rr_path, index=False)
+        rr_plots = []
 
-    # 12) Metadata index
+    # 12) Excel workbook of key tables
+    xlsx_path = str(SUB["tables"] / "report.xlsx")
+    _write_excel_workbook(
+        xlsx_path,
+        {
+            "metrics_summary": summary_path,
+            "per_contract_scaling": scaling_path,
+            "contract_windows": windows_path,
+            "uptime_overall": up_overall_path,
+            "uptime_per_contract": up_contract_path,
+            "lead_lag": ll_path,
+            "error_by_hour": e_hour_path,
+            "roll_dates": rolls_path,
+            "matched_detail": detailed_path,
+            "merged_snapshot": merged_path,
+            "rolling_ratio": rr_path,
+        }
+    )
+
+    # 13) Metadata index + HTML + optional zip
     meta = {
         "outputs": {
             "contract_windows": windows_path,
@@ -749,6 +912,7 @@ def run_pipeline(
             "error_by_hour": e_hour_path,
             "rolling_ratio_csv": rr_path,
             "rolling_ratio_plots": rr_plots,
+            "excel_workbook": xlsx_path,
         },
         "n_rows": {"dataset1": int(len(d1)), "dataset2": int(len(d2))},
         "time_span": {
@@ -763,7 +927,15 @@ def run_pipeline(
             "Diagnostics: lead/lag (best lag, corr), hour-of-day error profile, rolling ratio drift (plots)."
         ]
     }
-    with open(f"{out_dir}/analysis_metadata.json", "w") as f:
+
+    index_html = _build_index_html(out_dir, meta)
+    meta["outputs"]["index_html"] = index_html
+
+    if os.environ.get("ZIP_ARTIFACTS", "0") in {"1","true","True"}:
+        zip_path = _zip_artifacts(out_dir)
+        meta["outputs"]["zip_bundle"] = zip_path
+
+    with open(Path(out_dir) / "analysis_metadata.json", "w") as f:
         json.dump(meta, f, indent=2)
 
     print("Artifacts saved to:", out_dir)

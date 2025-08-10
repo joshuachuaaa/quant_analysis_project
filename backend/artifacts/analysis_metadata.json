@@ -1,54 +1,56 @@
 {
   "outputs": {
-    "contract_windows": "artifacts/contract_windows.csv",
-    "per_contract_scaling": "artifacts/per_contract_scaling.csv",
-    "metrics_summary": "artifacts/metrics_summary.csv",
-    "matched_detail": "artifacts/matched_detail.csv",
-    "roll_dates": "artifacts/roll_dates.csv",
-    "merged_snapshot": "artifacts/merged_snapshot.csv",
-    "heatmap_dataset1": "artifacts/missing_heatmap_dataset1_futures.png",
-    "heatmap_dataset2": "artifacts/missing_heatmap_dataset2_futures.png",
+    "contract_windows": "artifacts/tables/contract_windows.csv",
+    "per_contract_scaling": "artifacts/tables/per_contract_scaling.csv",
+    "metrics_summary": "artifacts/tables/metrics_summary.csv",
+    "matched_detail": "artifacts/tables/matched_detail.csv",
+    "roll_dates": "artifacts/tables/roll_dates.csv",
+    "merged_snapshot": "artifacts/tables/merged_snapshot.csv",
+    "heatmap_dataset1": "artifacts/heatmaps/global/missing_heatmap_dataset1_futures.png",
+    "heatmap_dataset2": "artifacts/heatmaps/global/missing_heatmap_dataset2_futures.png",
     "heatmaps_per_contract_dataset1": [
-      "artifacts/heatmap_dataset1_futures_K2025.png",
-      "artifacts/heatmap_dataset1_futures_N2025.png",
-      "artifacts/heatmap_dataset1_futures_Q2025.png",
-      "artifacts/heatmap_dataset1_futures_U2025.png"
+      "artifacts/heatmaps/per_contract/heatmap_dataset1_futures_K2025.png",
+      "artifacts/heatmaps/per_contract/heatmap_dataset1_futures_N2025.png",
+      "artifacts/heatmaps/per_contract/heatmap_dataset1_futures_Q2025.png",
+      "artifacts/heatmaps/per_contract/heatmap_dataset1_futures_U2025.png"
     ],
     "heatmaps_per_contract_dataset2": [
-      "artifacts/heatmap_dataset2_futures_M2025.png",
-      "artifacts/heatmap_dataset2_futures_N2025.png",
-      "artifacts/heatmap_dataset2_futures_Q2025.png",
-      "artifacts/heatmap_dataset2_futures_K2025.png",
-      "artifacts/heatmap_dataset2_futures_U2025.png"
+      "artifacts/heatmaps/per_contract/heatmap_dataset2_futures_M2025.png",
+      "artifacts/heatmaps/per_contract/heatmap_dataset2_futures_N2025.png",
+      "artifacts/heatmaps/per_contract/heatmap_dataset2_futures_Q2025.png",
+      "artifacts/heatmaps/per_contract/heatmap_dataset2_futures_K2025.png",
+      "artifacts/heatmaps/per_contract/heatmap_dataset2_futures_U2025.png"
     ],
     "overlap_heatmaps": [
-      "artifacts/overlap_N2025_both.png",
-      "artifacts/overlap_N2025_only_d1.png",
-      "artifacts/overlap_N2025_only_d2.png",
-      "artifacts/overlap_Q2025_both.png",
-      "artifacts/overlap_Q2025_only_d1.png",
-      "artifacts/overlap_Q2025_only_d2.png",
-      "artifacts/overlap_K2025_both.png",
-      "artifacts/overlap_K2025_only_d1.png",
-      "artifacts/overlap_K2025_only_d2.png"
+      "artifacts/heatmaps/overlap/overlap_N2025_both.png",
+      "artifacts/heatmaps/overlap/overlap_N2025_only_d1.png",
+      "artifacts/heatmaps/overlap/overlap_N2025_only_d2.png",
+      "artifacts/heatmaps/overlap/overlap_Q2025_both.png",
+      "artifacts/heatmaps/overlap/overlap_Q2025_only_d1.png",
+      "artifacts/heatmaps/overlap/overlap_Q2025_only_d2.png",
+      "artifacts/heatmaps/overlap/overlap_K2025_both.png",
+      "artifacts/heatmaps/overlap/overlap_K2025_only_d1.png",
+      "artifacts/heatmaps/overlap/overlap_K2025_only_d2.png"
     ],
-    "uptime_overall": "artifacts/uptime_overall.csv",
-    "uptime_per_contract": "artifacts/uptime_per_contract.csv",
+    "uptime_overall": "artifacts/tables/uptime_overall.csv",
+    "uptime_per_contract": "artifacts/tables/uptime_per_contract.csv",
     "contract_panels": [
-      "artifacts/panel_N2025.csv",
-      "artifacts/panel_K2025.csv",
-      "artifacts/panel_M2025.csv",
-      "artifacts/panel_Q2025.csv",
-      "artifacts/panel_U2025.csv"
+      "artifacts/panels/panel_N2025.csv",
+      "artifacts/panels/panel_K2025.csv",
+      "artifacts/panels/panel_M2025.csv",
+      "artifacts/panels/panel_Q2025.csv",
+      "artifacts/panels/panel_U2025.csv"
     ],
-    "lead_lag": "artifacts/lead_lag.csv",
-    "error_by_hour": "artifacts/error_by_hour.csv",
-    "rolling_ratio_csv": "artifacts/rolling_ratio.csv",
+    "lead_lag": "artifacts/tables/lead_lag.csv",
+    "error_by_hour": "artifacts/tables/error_by_hour.csv",
+    "rolling_ratio_csv": "artifacts/tables/rolling_ratio.csv",
     "rolling_ratio_plots": [
-      "artifacts/rolling_ratio_Q2025.png",
-      "artifacts/rolling_ratio_N2025.png",
-      "artifacts/rolling_ratio_K2025.png"
-    ]
+      "artifacts/diagnostics/rolling_ratio_Q2025.png",
+      "artifacts/diagnostics/rolling_ratio_N2025.png",
+      "artifacts/diagnostics/rolling_ratio_K2025.png"
+    ],
+    "excel_workbook": "artifacts/tables/report.xlsx",
+    "index_html": "artifacts/report/index.html"
   },
   "n_rows": {
     "dataset1": 17959,
